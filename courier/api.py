@@ -33,7 +33,12 @@ def get_city_map() -> CityMap:
 
 
 def get_jobs() -> list[Job]:
-    return [Job.model_validate(j) for j in _get_cached_json("/city/jobs")]
+    data = _get_cached_json("/city/jobs")
+    if isinstance(data, dict) and "data" in data:
+        data = data["data"]
+    return [Job.model_validate(j) for j in data]
+
+
 
 def get_weather() -> WeatherReport:
     return WeatherReport.model_validate(_get_cached_json("/city/weather"))
