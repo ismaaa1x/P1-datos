@@ -12,6 +12,6 @@
     "B": {"name": "edificio", "blocked": true},
     "P": {"name": "parque", "surface_weight": 0.95}
   },
-  "goal": 3000
+  "goal": 3000,
+  "max_time": 900
 }
-

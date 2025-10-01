@@ -14,13 +14,15 @@ class CityMap(BaseModel):
     height: int
     tiles: List[List[Tile]]
     legend: Dict[str, LegendItem]
-    goal: int | None = Field(default=None, alias="goal")
+    goal: float | None = Field(default=None, alias="goal")
+    max_time: int | None = None
+    city_name: str | None = None
 
 class Job(BaseModel):
     id: str
     pickup: Tuple[int, int]
     dropoff: Tuple[int, int]
-    payout: int
+    payout: float
     deadline: str
     weight: int
     priority: int
