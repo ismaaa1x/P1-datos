@@ -14,9 +14,8 @@ class CityMap(BaseModel):
     height: int
     tiles: List[List[Tile]]
     legend: Dict[str, LegendItem]
-    goal: float | None = Field(default=None, alias="goal")
-    max_time: int | None = None
-    city_name: str | None = None
+    goal: int | None = Field(default=None, alias="goal")
+    max_time: int | None = Field(default=None, alias="max_time")
 
 class Job(BaseModel):
     id: str

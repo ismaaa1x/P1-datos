@@ -1,17 +1,26 @@
 {
   "version": "1.0",
-  "width": 5,
-  "height": 3,
-  "tiles": [
-    ["C", "C", "C", "B", "B"],
-    ["C", "P", "C", "C", "B"],
-    ["B", "C", "C", "C", "C"]
-  ],
-  "legend": {
-    "C": {"name": "calle", "surface_weight": 1.0},
-    "B": {"name": "edificio", "blocked": true},
-    "P": {"name": "parque", "surface_weight": 0.95}
-  },
-  "goal": 3000,
-  "max_time": 900
+  "data": {
+    "version": "1.1",
+    "city_name": "TigerCity",
+    "width": 30,
+    "height": 30,
+    "goal": 1500.0,
+    "max_time": 900,
+    "tiles": [],
+    "legend": {
+      "C": {
+        "name": "street",
+        "surface_weight": 1.0
+      },
+      "B": {
+        "name": "building",
+        "blocked": true
+      },
+      "P": {
+        "name": "park",
+        "surface_weight": 0.95
+      }
+    }
+  }
 }
