@@ -4,7 +4,7 @@ from courier.game import CourierQuestGame
 class PantallaInicio(arcade.View):
     def __init__(self):
         super().__init__()
-        self.fondo = arcade.load_texture("assets/inicio.png")  # Asegurate que la imagen esté en esta ruta
+        self.fondo = arcade.load_texture("assets/inicio.png")  
 
     def on_show(self):
         arcade.set_background_color(arcade.color.BLACK)
@@ -45,7 +45,7 @@ class PantallaFinal(arcade.View):
         if key == arcade.key.R:
             self.window.show_view(PantallaInicio())
 
-# Inyectar pantalla final en el juego
+
 def courier_game_on_update(self, delta_time):
     self.game_time += delta_time
     self.burst_timer += delta_time
@@ -79,10 +79,10 @@ def courier_game_on_update(self, delta_time):
         final = PantallaFinal(self.total_money, len(self.completed), len(self.failed))
         self.window.show_view(final)
 
-# Inyectar método en clase
+
 CourierQuestGame.on_update = courier_game_on_update
 
-# Lanzador principal
+
 if __name__ == "__main__":
     ventana = arcade.Window(800, 600, "Courier Quest")
     inicio = PantallaInicio()

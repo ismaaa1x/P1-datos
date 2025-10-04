@@ -35,7 +35,13 @@ def get_jobs() -> list[Job]:
     data = _get_cached_json("/city/jobs")
     if isinstance(data, dict) and "data" in data:
         data = data["data"]
-    return [Job.model_validate(j) for j in data]
+    jobs = [Job.model_validate(j) for j in data]
+
+    
+    for i, job in enumerate(jobs):
+        job.release_time = i * 15 
+    return jobs
+
 
 def get_weather() -> WeatherReport:
     try:
