@@ -4,33 +4,19 @@ from courier.game import CourierQuestGame
 class PantallaInicio(arcade.View):
     def __init__(self):
         super().__init__()
+        self.fondo = arcade.load_texture("assets/inicio.png")  # Asegurate que la imagen esté en esta ruta
 
     def on_show(self):
-        arcade.set_background_color(arcade.color.DARK_BLUE)
+        arcade.set_background_color(arcade.color.BLACK)
 
     def on_draw(self):
         self.clear()
-
-        # Título del juego
-        arcade.draw_text("COURIER QUEST", self.window.width // 2, self.window.height // 2 + 100,
-                         arcade.color.WHITE, 48, anchor_x="center", font_name="Arial")
-
-        # Instrucción para comenzar
-        arcade.draw_text("Presiona ENTER para comenzar", self.window.width // 2, self.window.height // 2 + 40,
-                         arcade.color.LIGHT_GRAY, 20, anchor_x="center", font_name="Arial")
-
-        # Créditos
-        arcade.draw_text("Creado por Steven Watson & Ismael Rojas", self.window.width // 2, self.window.height // 2 - 40,
-                         arcade.color.GRAY, 16, anchor_x="center", font_name="Arial")
-        arcade.draw_text("Universidad Nacional", self.window.width // 2, self.window.height // 2 - 70,
-                         arcade.color.GRAY, 16, anchor_x="center", font_name="Arial")
+        arcade.draw_lrwh_rectangle_textured(0, 0, self.window.width, self.window.height, self.fondo)
 
     def on_key_press(self, key, modifiers):
         if key == arcade.key.ENTER:
-            from courier.game import CourierQuestGame
             juego = CourierQuestGame()
             self.window.show_view(juego)
-
 
 class PantallaFinal(arcade.View):
     def __init__(self, dinero, completados, fallidos):
@@ -102,4 +88,3 @@ if __name__ == "__main__":
     inicio = PantallaInicio()
     ventana.show_view(inicio)
     arcade.run()
-
