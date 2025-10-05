@@ -84,7 +84,7 @@ CourierQuestGame.on_update = courier_game_on_update
 
 
 if __name__ == "__main__":
-    ventana = arcade.Window(800, 600, "Courier Quest")
+    ventana = arcade.Window(800, 600, "Courier Quest", resizable=True)
     inicio = PantallaInicio()
     ventana.show_view(inicio)
     arcade.run()

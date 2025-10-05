@@ -1,6 +1,11 @@
 import arcade
-from .api import get_city_map, get_jobs, get_weather
+import json
+import os
+
+from .api import get_jobs, get_weather
 from .models import Job, WeatherReport
+from courier.models import CityMap as CityMapModel
+from courier.city_map import CityMapData
 
 TILE_SIZE = 32
 PLAYER_SPEED = 3
@@ -19,7 +24,23 @@ CLIMA_MULTIPLICADOR = {
 class CourierQuestGame(arcade.View):
     def __init__(self):
         super().__init__()
-        self.city_map = get_city_map()
+
+        
+        ruta_mapa = os.path.join(os.path.dirname(__file__), "..", "api_cache", "city_map.json")
+        with open(ruta_mapa, "r", encoding="utf-8") as f:
+            raw = json.load(f)
+            model = CityMapModel.model_validate(raw["data"])
+            self.city_map = CityMapData(model)
+
+       
+        self.sprite_edificio = arcade.load_texture("assets/edificio.png")
+        self.sprite_arbusto = arcade.load_texture("assets/arbusto.png")
+        self.sprite_pedido = arcade.load_texture("assets/box.png")
+        self.sprite_entrega = arcade.load_texture("assets/icon.png")
+        self.sprite_repartidor = arcade.load_texture("assets/chatex.png")
+        self.angulo_repartidor = 0
+
+       
         self.jobs = get_jobs()
         self.weather: WeatherReport = get_weather()
         self.player_pos = self.buscar_inicio_en_calle()
@@ -37,6 +58,7 @@ class CourierQuestGame(arcade.View):
         self.burst_timer = 0
         self.current_burst = self.weather.bursts[0] if self.weather.bursts else None
 
+      
         map_width = self.city_map.width * TILE_SIZE
         map_height = self.city_map.height * TILE_SIZE
         self.panel_width = 300
@@ -47,6 +69,28 @@ class CourierQuestGame(arcade.View):
         self.window.set_size(int(map_width * self.scale + self.panel_width), int(map_height * self.scale))
         arcade.set_background_color(arcade.color.SKY_BLUE)
 
+
+    def obtener_vecinos(self, y, x):
+            vecinos = {
+                "arriba": y > 0 and self.city_map.tiles[y - 1][x] == "C",
+                "abajo": y < self.city_map.height - 1 and self.city_map.tiles[y + 1][x] == "C",
+                "izquierda": x > 0 and self.city_map.tiles[y][x - 1] == "C",
+                "derecha": x < self.city_map.width - 1 and self.city_map.tiles[y][x + 1] == "C"
+            }
+            return vecinos
+
+
+    def on_resize(self, width, height):
+        super().on_resize(width, height)
+        self.window.set_viewport(0, width, 0, height)
+
+        map_width = self.city_map.width * TILE_SIZE
+        map_height = self.city_map.height * TILE_SIZE
+        panel_width = 300
+        scale_x = (width - panel_width) / map_width
+        scale_y = height / map_height
+        self.scale = min(scale_x, scale_y, 1.0)
+
     def buscar_inicio_en_calle(self):
         for y, fila in enumerate(self.city_map.tiles):
             for x, tile in enumerate(fila):
@@ -56,39 +100,66 @@ class CourierQuestGame(arcade.View):
 
     def on_draw(self):
         self.clear()
+
+        
         for y, fila in enumerate(self.city_map.tiles):
             for x, tile in enumerate(fila):
                 px = x * TILE_SIZE * self.scale + TILE_SIZE * self.scale / 2
                 py = self.window.height - (y * TILE_SIZE * self.scale + TILE_SIZE * self.scale / 2)
 
                 if tile == "C":
-                    arcade.draw_rectangle_filled(px, py, TILE_SIZE * self.scale, TILE_SIZE * self.scale, arcade.color.DARK_GRAY)
-                    arcade.draw_line(px - 10, py, px + 10, py, arcade.color.WHITE, 2)
-                elif tile == "B":
-                    arcade.draw_rectangle_filled(px, py, TILE_SIZE * self.scale, TILE_SIZE * self.scale, arcade.color.BLUE_GRAY)
-                    arcade.draw_rectangle_filled(px, py - 5, 6, 10, arcade.color.RED)
-                elif tile == "P":
-                    arcade.draw_rectangle_filled(px, py, TILE_SIZE * self.scale, TILE_SIZE * self.scale, arcade.color.DARK_GREEN)
-                    arcade.draw_circle_filled(px, py, 5, arcade.color.LIGHT_GREEN)
+                    arcade.draw_rectangle_filled(
+                        px, py,
+                        TILE_SIZE * self.scale,
+                        TILE_SIZE * self.scale,
+                        arcade.color.BLACK
+                    )
 
+                elif tile == "P":
+                    arcade.draw_texture_rectangle(
+                        px, py,
+                        TILE_SIZE * self.scale * 1.2,
+                        TILE_SIZE * self.scale * 1.2,
+                        self.sprite_arbusto
+                    )
+
+       
+        for edificio in self.city_map.buildings:
+            x = edificio["x"]
+            y = edificio["y"]
+            w = edificio["width"]
+            h = edificio["height"]
+            px = x * TILE_SIZE * self.scale + (w * TILE_SIZE * self.scale) / 2
+            py = self.window.height - (y * TILE_SIZE * self.scale + (h * TILE_SIZE * self.scale) / 2)
+            arcade.draw_texture_rectangle(px, py, w * TILE_SIZE * self.scale, h * TILE_SIZE * self.scale, self.sprite_edificio)
+
+        
         for job in self.active_jobs:
             x, y = job.pickup
             px = x * TILE_SIZE * self.scale + TILE_SIZE * self.scale / 2
             py = self.window.height - (y * TILE_SIZE * self.scale + TILE_SIZE * self.scale / 2)
-            arcade.draw_circle_filled(px, py, 6, arcade.color.GREEN)
+            arcade.draw_texture_rectangle(px, py, TILE_SIZE * self.scale * 1.0, TILE_SIZE * self.scale * 1.0, self.sprite_pedido)
 
+       
         if self.current_job:
             x, y = self.current_job.dropoff
             px = x * TILE_SIZE * self.scale + TILE_SIZE * self.scale / 2
             py = self.window.height - (y * TILE_SIZE * self.scale + TILE_SIZE * self.scale / 2)
-            arcade.draw_circle_filled(px, py, 6, arcade.color.GOLD)
+            arcade.draw_texture_rectangle(px, py, TILE_SIZE * self.scale * 1.2, TILE_SIZE * self.scale * 1.2, self.sprite_entrega)
 
+       
         x, y = self.player_pos[1], self.player_pos[0]
         px = x * TILE_SIZE * self.scale + TILE_SIZE * self.scale / 2
         py = self.window.height - (y * TILE_SIZE * self.scale + TILE_SIZE * self.scale / 2)
-        arcade.draw_rectangle_filled(px, py, TILE_SIZE * self.scale - 2, TILE_SIZE * self.scale - 2, arcade.color.ORANGE)
+        arcade.draw_texture_rectangle(px, py, TILE_SIZE * self.scale * 1.4, TILE_SIZE * self.scale * 1.4, self.sprite_repartidor, angle=self.angulo_repartidor)
 
+        
         self.dibujar_panel_lateral()
+
+
+
+
+
 
     def dibujar_barra(self, x, y, valor, maximo, etiqueta):
         ancho = 200
@@ -153,6 +224,16 @@ class CourierQuestGame(arcade.View):
                 m_tile = self.city_map.legend[tile].surface_weight or 1.0
                 m_resistencia = 1.0 if self.resistencia > 30 else 0.8 if self.resistencia > 10 else 0.0
                 velocidad = PLAYER_SPEED * m_clima * m_peso * m_tile * m_resistencia
+                if dx == 0 and dy == -1:
+                    self.angulo_repartidor = 270
+                elif dx == 0 and dy == 1:
+                    self.angulo_repartidor = 90
+                elif dx == -1 and dy == 0:
+                    self.angulo_repartidor = 180
+                elif dx == 1 and dy == 0:
+                    self.angulo_repartidor = 0
+  
+
                 self.player_pos = (nueva_fila, nueva_col)
 
                 gasto = 0.5
