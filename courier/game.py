@@ -1,6 +1,7 @@
 import arcade
 import json
 import os
+import datetime
 
 from .api import get_jobs, get_weather
 from .models import Job, WeatherReport
@@ -25,7 +26,7 @@ class CourierQuestGame(arcade.View):
     def __init__(self):
         super().__init__()
 
-        
+       
         ruta_mapa = os.path.join(os.path.dirname(__file__), "..", "api_cache", "city_map.json")
         with open(ruta_mapa, "r", encoding="utf-8") as f:
             raw = json.load(f)
@@ -33,6 +34,10 @@ class CourierQuestGame(arcade.View):
             self.city_map = CityMapData(model)
 
        
+        self.historial_movimientos = []
+        self.max_deshacer = 15
+
+        
         self.sprite_edificio = arcade.load_texture("assets/edificio.png")
         self.sprite_arbusto = arcade.load_texture("assets/arbusto.png")
         self.sprite_pedido = arcade.load_texture("assets/box.png")
@@ -40,9 +45,13 @@ class CourierQuestGame(arcade.View):
         self.sprite_repartidor = arcade.load_texture("assets/chatex.png")
         self.angulo_repartidor = 0
 
-       
+        
         self.jobs = get_jobs()
         self.weather: WeatherReport = get_weather()
+        self.burst_index = 0
+        self.burst_timer = 0
+        self.current_burst = self.weather.bursts[0] if self.weather.bursts else None
+
         self.player_pos = self.buscar_inicio_en_calle()
         self.current_job: Job | None = None
         self.completed = []
@@ -51,14 +60,16 @@ class CourierQuestGame(arcade.View):
         self.resistencia = 100
         self.exhausto = False
         self.game_time = 0.0
-        self.remaining_time = self.city_map.goal or 1500
+
+       
+        clima_actual = self.current_burst.condition if self.current_burst else "clear"
+        multiplicador = CLIMA_MULTIPLICADOR.get(clima_actual, 1.0)
+        self.remaining_time = int((self.city_map.goal or 1500) * multiplicador)
+
         self.release_index = 0
         self.active_jobs = []
-        self.burst_index = 0
-        self.burst_timer = 0
-        self.current_burst = self.weather.bursts[0] if self.weather.bursts else None
 
-      
+       
         map_width = self.city_map.width * TILE_SIZE
         map_height = self.city_map.height * TILE_SIZE
         self.panel_width = 300
@@ -178,28 +189,42 @@ class CourierQuestGame(arcade.View):
     def dibujar_panel_lateral(self):
         x0 = self.window.width - self.panel_width
         y = self.window.height - 30
+
+        
         arcade.draw_lrtb_rectangle_filled(x0, self.window.width, self.window.height, 0, arcade.color.LIGHT_GRAY)
+
+        
         arcade.draw_text("Estado del repartidor", x0 + 20, y, arcade.color.BLACK, 18)
         y -= 40
+
+       
         arcade.draw_text(f"Tiempo: {int(self.game_time)}s / {self.remaining_time}s", x0 + 20, y, arcade.color.BLACK, 14)
         y -= 30
         arcade.draw_text(f"Clima: {self.current_burst.condition}", x0 + 20, y, arcade.color.BLACK, 14)
         y -= 40
+
+        
         self.dibujar_barra(x0 + 20, y, self.resistencia, 100, "Resistencia")
         y -= 50
         reputacion = max(0, 10 * len(self.completed) / (1 + len(self.completed) + len(self.failed)))
         self.dibujar_barra(x0 + 20, y, reputacion, 10, "Reputación")
         y -= 50
+
+       
         arcade.draw_text(f"Velocidad: {PLAYER_SPEED:.2f} m/s", x0 + 20, y, arcade.color.BLACK, 14)
         y -= 30
         arcade.draw_text(f"Dinero: ₡{self.total_money:.2f}", x0 + 20, y, arcade.color.BLACK, 14)
         y -= 30
         arcade.draw_text(f"Pedidos activos: {len(self.active_jobs)}", x0 + 20, y, arcade.color.BLACK, 14)
         y -= 30
+
+        
         if self.release_index < len(self.jobs):
             siguiente = self.jobs[self.release_index]
             arcade.draw_text(f"Próximo pedido en: {int(siguiente.release_time - self.game_time)}s", x0 + 20, y, arcade.color.DARK_RED, 12)
             y -= 30
+
+       
         arcade.draw_text("Pedidos:", x0 + 20, y, arcade.color.BLACK, 14)
         y -= 20
         for job in self.active_jobs[:5]:
@@ -208,22 +233,56 @@ class CourierQuestGame(arcade.View):
             arcade.draw_text(f"₡{job.payout:.2f} | {job.weight}kg", x0 + 20, y, arcade.color.DARK_GREEN, 12)
             y -= 25
 
+       
+        y -= 20
+        arcade.draw_text("Controles:", x0 + 20, y, arcade.color.BLACK, 16)
+        y -= 20
+        arcade.draw_text("← ↑ ↓ →  Mover repartidor", x0 + 20, y, arcade.color.DARK_GRAY, 14)
+        y -= 20
+        arcade.draw_text("U  Deshacer movimiento", x0 + 20, y, arcade.color.DARK_GRAY, 14)
+        y -= 20
+        arcade.draw_text("G  Guardar partida", x0 + 20, y, arcade.color.DARK_GRAY, 14)
+        y -= 20
+        arcade.draw_text("H  Ver historial", x0 + 20, y, arcade.color.DARK_GRAY, 14)
+        y -= 20
+        arcade.draw_text("R  Reiniciar partida", x0 + 20, y, arcade.color.DARK_GRAY, 14)
+        y -= 20
+        arcade.draw_text("ESC  Terminar juego", x0 + 20, y, arcade.color.DARK_GRAY, 14)
+
+
+
     def mover_jugador(self, dx, dy):
         if self.exhausto:
             return
+
         nueva_fila = self.player_pos[0] + dy
         nueva_col = self.player_pos[1] + dx
+
+       
         if 0 <= nueva_fila < self.city_map.height and 0 <= nueva_col < self.city_map.width:
             tile = self.city_map.tiles[nueva_fila][nueva_col]
+
+            
             if not self.city_map.legend[tile].blocked:
+                
+                if len(self.historial_movimientos) >= self.max_deshacer:
+                    self.historial_movimientos.pop(0)
+                self.historial_movimientos.append(self.player_pos)
+
+               
                 peso_total = self.current_job.weight if self.current_job else 0
                 clima = self.current_burst.condition if self.current_burst else "clear"
                 intensidad = self.current_burst.intensity if self.current_burst else 0
+
                 m_clima = CLIMA_MULTIPLICADOR.get(clima, 1.0)
                 m_peso = max(0.8, 1 - 0.03 * peso_total)
                 m_tile = self.city_map.legend[tile].surface_weight or 1.0
                 m_resistencia = 1.0 if self.resistencia > 30 else 0.8 if self.resistencia > 10 else 0.0
+
                 velocidad = PLAYER_SPEED * m_clima * m_peso * m_tile * m_resistencia
+                self.velocidad_actual = velocidad 
+
+                
                 if dx == 0 and dy == -1:
                     self.angulo_repartidor = 270
                 elif dx == 0 and dy == 1:
@@ -232,10 +291,11 @@ class CourierQuestGame(arcade.View):
                     self.angulo_repartidor = 180
                 elif dx == 1 and dy == 0:
                     self.angulo_repartidor = 0
-  
 
+                
                 self.player_pos = (nueva_fila, nueva_col)
 
+                
                 gasto = 0.5
                 if peso_total > 3:
                     gasto += 0.2 * (peso_total - 3)
@@ -250,7 +310,10 @@ class CourierQuestGame(arcade.View):
                 if self.resistencia <= 0:
                     self.exhausto = True
 
+
     def on_key_press(self, key, modifiers):
+
+
         if key == arcade.key.UP:
             self.mover_jugador(0, -1)
         elif key == arcade.key.DOWN:
@@ -261,6 +324,30 @@ class CourierQuestGame(arcade.View):
             self.mover_jugador(1, 0)
         elif key == arcade.key.E:
             self.interactuar()
+        elif key == arcade.key.U and self.historial_movimientos:
+             self.player_pos = self.historial_movimientos.pop()
+        elif key == arcade.key.U and self.historial_movimientos:
+                self.player_pos = self.historial_movimientos.pop()
+
+        elif key == arcade.key.G:
+                self.guardar_historial()
+                print(" Partida guardada.")
+
+        elif key == arcade.key.H:
+                self.mostrar_historial()
+
+        elif key == arcade.key.R:
+                from main import CourierQuestGame
+                nuevo_juego = CourierQuestGame()
+                self.window.show_view(nuevo_juego)
+
+        elif key == arcade.key.ESCAPE:
+                self.finalizar_partida()
+
+
+
+
+
 
     def interactuar(self):
         fila, col = self.player_pos
@@ -282,18 +369,21 @@ class CourierQuestGame(arcade.View):
         self.game_time += delta_time
         self.burst_timer += delta_time
 
+       
         if self.burst_timer >= self.current_burst.duration_sec:
             self.burst_index += 1
             if self.burst_index < len(self.weather.bursts):
                 self.current_burst = self.weather.bursts[self.burst_index]
                 self.burst_timer = 0
 
+        
         if self.release_index < len(self.jobs):
             next_job = self.jobs[self.release_index]
             if self.game_time >= next_job.release_time:
                 self.active_jobs.append(next_job)
                 self.release_index += 1
 
+       
         still_active = []
         for job in self.active_jobs:
             if self.game_time > job.release_time + 300:
@@ -302,12 +392,65 @@ class CourierQuestGame(arcade.View):
                 still_active.append(job)
         self.active_jobs = still_active
 
+        
         if self.exhausto and self.resistencia < 30:
             self.resistencia += 5 * delta_time
             if self.resistencia >= 30:
                 self.exhausto = False
 
-        if self.game_time >= self.remaining_time or self.total_money >= self.city_map.goal:
-            from main import PantallaFinal
-            final = PantallaFinal(self.total_money, len(self.completed), len(self.failed))
-            self.window.show_view(final)
+        
+        tiempo_terminado = self.game_time >= self.remaining_time
+        pedidos_terminados = not self.active_jobs and not self.current_job
+        objetivo_dinero = self.total_money >= self.city_map.goal
+
+        if tiempo_terminado or pedidos_terminados or objetivo_dinero:
+            self.finalizar_partida()
+
+
+             
+
+    def guardar_historial(self):
+
+        reputacion = max(0, 10 * len(self.completed) / (1 + len(self.completed) + len(self.failed)))
+        partida = {
+            "fecha": datetime.datetime.now().isoformat(),
+            "clima": self.current_burst.condition if self.current_burst else "clear",
+            "duracion": self.game_time,
+            "dinero": self.total_money,
+            "reputacion": reputacion,
+            "pedidos_completados": len(self.completed),
+            "pedidos_fallidos": len(self.failed)
+        }
+
+        ruta = os.path.join(os.path.dirname(__file__), "..", "saves", "historial.json")
+        try:
+            with open(ruta, "r", encoding="utf-8") as f:
+                historial = json.load(f)
+        except FileNotFoundError:
+            historial = []
+
+        historial.append(partida)
+
+        with open(ruta, "w", encoding="utf-8") as f:
+            json.dump(historial, f, indent=4)
+
+
+
+
+    def mostrar_historial(self):
+        ruta = os.path.join(os.path.dirname(__file__), "..", "saves", "historial.json")
+        try:
+            with open(ruta, "r", encoding="utf-8") as f:
+                historial = json.load(f)
+            print("\n  Historial de partidas:")
+            for partida in historial:
+                print(f"- {partida['fecha']}: €{partida['dinero']} | Clima: {partida['clima']} | Reputación: {partida['reputacion']} | {partida['pedidos_completados']} pedidos completados")
+        except FileNotFoundError:
+            print("No hay historial guardado.")
+
+
+    def finalizar_partida(self):
+        self.guardar_historial()
+        self.mostrar_historial()
+        print(" La partida ha terminado.")
+        arcade.close_window()

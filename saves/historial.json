@@ -1,0 +1,20 @@
+[
+    {
+        "fecha": "2025-10-05T10:43:27.151622",
+        "clima": "rain",
+        "duracion": 18.08531383331865,
+        "dinero": 0.0,
+        "reputacion": 0,
+        "pedidos_completados": 0,
+        "pedidos_fallidos": 0
+    },
+    {
+        "fecha": "2025-10-05T10:43:44.011136",
+        "clima": "rain",
+        "duracion": 2.957327000098303,
+        "dinero": 0.0,
+        "reputacion": 0,
+        "pedidos_completados": 0,
+        "pedidos_fallidos": 0
+    }
+]
