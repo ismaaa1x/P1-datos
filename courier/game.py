@@ -1,18 +1,19 @@
-import arcade #libreria para crear juegos 2D
+import arcade
 import json
 import os
 import datetime
+import random
 
-from .api import get_jobs, get_weather # funciones para obtener datos de la API
-from .models import Job, WeatherReport # modelos de datos
-from courier.models import CityMap as CityMapModel # modelo del mapa de la ciudad
-from courier.city_map import CityMapData # clase para manejar el mapa de la ciudad
+from .api import get_jobs, get_weather
+from .models import Job, WeatherReport, WeatherBurst
+from courier.models import CityMap as CityMapModel
+from courier.city_map import CityMapData
 
-TILE_SIZE = 32 # tamaño de cada celda del mapa en pixeles
-PLAYER_SPEED = 3 # velocidad base del jugador en celdas por segundo
+TILE_SIZE = 32
+PLAYER_SPEED = 3
 
-CLIMA_MULTIPLICADOR = { # multiplicadores de tiempo segun el clima
-    "clear": 1.00, 
+CLIMA_MULTIPLICADOR = {
+    "clear": 1.00,
     "clouds": 0.98,
     "rain": 0.85,
     "storm": 0.75,
@@ -22,38 +23,64 @@ CLIMA_MULTIPLICADOR = { # multiplicadores de tiempo segun el clima
     "cold": 0.92
 }
 
-class CourierQuestGame(arcade.View): # Clase principal del juego
-    def __init__(self): 
-        super().__init__() 
+def generar_bursts_dinamicos(duracion_total=600):
+    condiciones = ["clear", "clouds", "rain", "storm", "fog", "wind", "heat", "cold"]
+    bursts = []
+    tiempo_restante = duracion_total
 
-       
-        ruta_mapa = os.path.join(os.path.dirname(__file__), "..", "api_cache", "city_map.json") # Ruta al archivo del mapa de la ciudad
-        with open(ruta_mapa, "r", encoding="utf-8") as f: # Abre el archivo del mapa
-            raw = json.load(f) # Carga los datos JSON
-            model = CityMapModel.model_validate(raw["data"]) 
-            self.city_map = CityMapData(model) 
+    while tiempo_restante > 0:
+        duracion = random.randint(60, 120)
+        condicion = random.choice(condiciones)
+        intensidad = round(random.uniform(0.1, 1.0), 2)
+        bursts.append(WeatherBurst(condition=condicion, duration_sec=duracion, intensity=intensidad))
+        tiempo_restante -= duracion
 
-       
-        self.historial_movimientos = [] # lista para almacenar historial de movimientos
-        self.max_deshacer = 15 # maximo de movimientos que se pueden deshacer
+    return bursts
 
-        #carga de las imagenes 
-        self.sprite_edificio = arcade.load_texture("assets/edificio.png") 
+class CourierQuestGame(arcade.View):
+    def __init__(self):
+        super().__init__()
+
+        # Cargar mapa de la ciudad
+        ruta_mapa = os.path.join(os.path.dirname(__file__), "..", "api_cache", "city_map.json")
+        with open(ruta_mapa, "r", encoding="utf-8") as f:
+            raw = json.load(f)
+            model = CityMapModel.model_validate(raw["data"])
+            self.city_map = CityMapData(model)
+
+        # Historial de movimientos
+        self.historial_movimientos = []
+        self.max_deshacer = 15
+
+        # Cargar sprites
+        self.sprite_edificio = arcade.load_texture("assets/edificio.png")
         self.sprite_arbusto = arcade.load_texture("assets/arbusto.png")
         self.sprite_pedido = arcade.load_texture("assets/box.png")
         self.sprite_entrega = arcade.load_texture("assets/icon.png")
         self.sprite_repartidor = arcade.load_texture("assets/chatex.png")
         self.angulo_repartidor = 0
 
-        
-        self.jobs = get_jobs() #obtiene la lista de pedidos
-        self.weather: WeatherReport = get_weather() #obtiene el reporte del clima
-        self.burst_index = 0
-        self.burst_timer = 0
-        self.current_burst = self.weather.bursts[0] if self.weather.bursts else None #evento climatico actual
+        # Cargar pedidos y clima
+        self.jobs = get_jobs()
+        self.weather: WeatherReport = get_weather()
 
-        #define el estado inicial del jugador, energia,dinero, etc
-        self.player_pos = self.buscar_inicio_en_calle() 
+        # Generar bursts dinámicos si la API no devuelve suficientes
+        if not self.weather.bursts or len(self.weather.bursts) < 2:
+            self.weather.bursts = generar_bursts_dinamicos(duracion_total=600)
+
+        burst = self.weather.bursts[0]
+        self.weather_state = {
+            "bursts": self.weather.bursts,
+            "burst_index": 0,
+            "burst_time_left": burst.duration_sec,
+            "current": burst.condition,
+            "intensity": burst.intensity
+        }
+
+        self.aplicar_efectos_climaticos()
+
+        # Estado del jugador
+        self.player_pos = self.buscar_inicio_en_calle()
         self.current_job: Job | None = None
         self.completed = []
         self.failed = []
@@ -62,24 +89,27 @@ class CourierQuestGame(arcade.View): # Clase principal del juego
         self.exhausto = False
         self.game_time = 0.0
 
-       # tiempo restante para completar el objetivo, ajustado por el clima
-        clima_actual = self.current_burst.condition if self.current_burst else "clear"
+        # Tiempo restante ajustado por clima inicial
+        clima_actual = self.weather_state["current"]
         multiplicador = CLIMA_MULTIPLICADOR.get(clima_actual, 1.0)
         self.remaining_time = int((self.city_map.goal or 1500) * multiplicador)
 
-        self.release_index = 0 
-        self.active_jobs = [] #lista de pedidos activos
+        # Pedidos activos
+        self.release_index = 0
+        self.active_jobs = []
 
-       # configura la ventana del juego
+        # Configurar ventana
         map_width = self.city_map.width * TILE_SIZE
         map_height = self.city_map.height * TILE_SIZE
         self.panel_width = 300
         scale_x = (1000 - self.panel_width) / map_width
         scale_y = 800 / map_height
         self.scale = min(scale_x, scale_y, 1.0)
-        
+
         self.window.set_size(int(map_width * self.scale + self.panel_width), int(map_height * self.scale))
         arcade.set_background_color(arcade.color.SKY_BLUE)
+
+
 
 
     def obtener_vecinos(self, y, x): # Obtiene los vecinos de una celda que son calles
@@ -187,45 +217,54 @@ class CourierQuestGame(arcade.View): # Clase principal del juego
         arcade.draw_rectangle_filled(x + (porcentaje * ancho) / 2, y, porcentaje * ancho, alto, color_barra)
         arcade.draw_text(f"{etiqueta}: {int(valor)} / {int(maximo)}", x, y + 20, arcade.color.BLACK, 12)
 
-    def dibujar_panel_lateral(self): # Dibuja el panel lateral con informacion del juego
+    def dibujar_panel_lateral(self):
+        """Dibuja el panel lateral con información del juego."""
         x0 = self.window.width - self.panel_width
         y = self.window.height - 30
 
-        
         arcade.draw_lrtb_rectangle_filled(x0, self.window.width, self.window.height, 0, arcade.color.LIGHT_GRAY)
 
-        
         arcade.draw_text("Estado del repartidor", x0 + 20, y, arcade.color.BLACK, 18)
         y -= 40
 
-       
         arcade.draw_text(f"Tiempo: {int(self.game_time)}s / {self.remaining_time}s", x0 + 20, y, arcade.color.BLACK, 14)
         y -= 30
-        arcade.draw_text(f"Clima: {self.current_burst.condition}", x0 + 20, y, arcade.color.BLACK, 14)
-        y -= 40
 
-        
+        # Clima actual y próximo
+        clima = self.weather_state["current"]
+        arcade.draw_text(f"Clima actual: {clima}", x0 + 20, y, arcade.color.BLACK, 14)
+        y -= 20
+
+        siguiente_index = self.weather_state["burst_index"] + 1
+        if siguiente_index < len(self.weather_state["bursts"]):
+            siguiente = self.weather_state["bursts"][siguiente_index]
+            arcade.draw_text(f"Próximo clima: {siguiente.condition}", x0 + 20, y, arcade.color.DARK_GRAY, 12)
+            y -= 20
+
+        y -= 10
+
+        # Barra de resistencia
         self.dibujar_barra(x0 + 20, y, self.resistencia, 100, "Resistencia")
         y -= 50
-        reputacion = max(0, 10 * len(self.completed) / (1 + len(self.completed) + len(self.failed)))
+
+        # Reputación fija: 2 puntos por pedido completado, máximo 10
+        reputacion = min(10, 2 * len(self.completed))
         self.dibujar_barra(x0 + 20, y, reputacion, 10, "Reputación")
         y -= 50
 
-       
-        arcade.draw_text(f"Velocidad: {PLAYER_SPEED:.2f} m/s", x0 + 20, y, arcade.color.BLACK, 14)
+        arcade.draw_text(f"Velocidad: {self.velocidad_actual:.2f} m/s", x0 + 20, y, arcade.color.BLACK, 14)
         y -= 30
         arcade.draw_text(f"Dinero: ₡{self.total_money:.2f}", x0 + 20, y, arcade.color.BLACK, 14)
         y -= 30
         arcade.draw_text(f"Pedidos activos: {len(self.active_jobs)}", x0 + 20, y, arcade.color.BLACK, 14)
         y -= 30
 
-        
         if self.release_index < len(self.jobs):
             siguiente = self.jobs[self.release_index]
-            arcade.draw_text(f"Próximo pedido en: {int(siguiente.release_time - self.game_time)}s", x0 + 20, y, arcade.color.DARK_RED, 12)
+            tiempo_restante = max(0, int(siguiente.release_time - self.game_time))
+            arcade.draw_text(f"Próximo pedido en: {tiempo_restante}s", x0 + 20, y, arcade.color.DARK_RED, 12)
             y -= 30
 
-       
         arcade.draw_text("Pedidos:", x0 + 20, y, arcade.color.BLACK, 14)
         y -= 20
         for job in self.active_jobs[:5]:
@@ -234,7 +273,6 @@ class CourierQuestGame(arcade.View): # Clase principal del juego
             arcade.draw_text(f"₡{job.payout:.2f} | {job.weight}kg", x0 + 20, y, arcade.color.DARK_GREEN, 12)
             y -= 25
 
-       
         y -= 20
         arcade.draw_text("Controles:", x0 + 20, y, arcade.color.BLACK, 16)
         y -= 20
@@ -252,38 +290,59 @@ class CourierQuestGame(arcade.View): # Clase principal del juego
 
 
 
-    def mover_jugador(self, dx, dy): # controla el movimiento del jugador y aplica restricciones
+
+
+
+
+
+
+
+    def mover_jugador(self, dx, dy):
         if self.exhausto:
             return
 
         nueva_fila = self.player_pos[0] + dy
         nueva_col = self.player_pos[1] + dx
 
-       
+        # Verificar límites del mapa
         if 0 <= nueva_fila < self.city_map.height and 0 <= nueva_col < self.city_map.width:
             tile = self.city_map.tiles[nueva_fila][nueva_col]
 
-            
+            # Verificar si el tile no está bloqueado
             if not self.city_map.legend[tile].blocked:
-                
+                # Guardar posición anterior para deshacer
                 if len(self.historial_movimientos) >= self.max_deshacer:
                     self.historial_movimientos.pop(0)
                 self.historial_movimientos.append(self.player_pos)
 
-               
+                # Obtener modificadores
                 peso_total = self.current_job.weight if self.current_job else 0
-                clima = self.current_burst.condition if self.current_burst else "clear"
-                intensidad = self.current_burst.intensity if self.current_burst else 0
+                clima = self.weather_state["current"]
+                intensidad = self.weather_state["intensity"]
 
-                m_clima = CLIMA_MULTIPLICADOR.get(clima, 1.0)
+                # Velocidad base según clima
+                velocidad_por_clima = {
+                    "clear": PLAYER_SPEED,
+                    "rain": PLAYER_SPEED * 0.85,
+                    "storm": PLAYER_SPEED * 0.70,
+                    "fog": PLAYER_SPEED * 0.80,
+                    "wind": PLAYER_SPEED * 0.88,
+                    "cold": PLAYER_SPEED * 0.90,
+                    "heat": PLAYER_SPEED,
+                    "clouds": PLAYER_SPEED * 0.95
+                }
+                velocidad_base = velocidad_por_clima.get(clima, PLAYER_SPEED)
+
+                # Modificadores adicionales
                 m_peso = max(0.8, 1 - 0.03 * peso_total)
                 m_tile = self.city_map.legend[tile].surface_weight or 1.0
-                m_resistencia = 1.0 if self.resistencia > 30 else 0.8 if self.resistencia > 10 else 0.0
+                m_resistencia = 1.0 if self.resistencia > 30 else 0.8 if self.resistencia > 10 else 0.5
 
-                velocidad = PLAYER_SPEED * m_clima * m_peso * m_tile * m_resistencia 
-                self.velocidad_actual = velocidad 
+                # Aplicar velocidad ajustada
+                velocidad = velocidad_base * m_peso * m_tile * m_resistencia
+                self.velocidad_actual = velocidad
 
-                
+                # Actualizar ángulo del repartidor
                 if dx == 0 and dy == -1:
                     self.angulo_repartidor = 270
                 elif dx == 0 and dy == 1:
@@ -293,23 +352,29 @@ class CourierQuestGame(arcade.View): # Clase principal del juego
                 elif dx == 1 and dy == 0:
                     self.angulo_repartidor = 0
 
-                
+                # Mover jugador
                 self.player_pos = (nueva_fila, nueva_col)
 
-                
+                # Calcular gasto de resistencia
                 gasto = 0.5
                 if peso_total > 3:
                     gasto += 0.2 * (peso_total - 3)
-                if clima in ["rain", "wind"]:
-                    gasto += 0.1
-                elif clima == "storm":
-                    gasto += 0.3
-                elif clima == "heat":
-                    gasto += 0.2
+
+                desgaste_climatico = {
+                    "rain": 0.1,
+                    "wind": 0.1,
+                    "storm": 0.3,
+                    "heat": 0.2,
+                    "cold": -0.05  # frío reduce desgaste
+                }
+                gasto += desgaste_climatico.get(clima, 0.0)
 
                 self.resistencia -= gasto
                 if self.resistencia <= 0:
                     self.exhausto = True
+
+
+
 
 
     def on_key_press(self, key, modifiers): # Maneja la entrada del teclado para mover al jugador y otras acciones
@@ -366,56 +431,108 @@ class CourierQuestGame(arcade.View): # Clase principal del juego
                     self.active_jobs.remove(job)
                     break
 
-    def on_update(self, delta_time): # Actualiza el estado del juego cada frame
+    def on_update(self, delta_time):
+        """Actualiza el estado del juego cada frame."""
         self.game_time += delta_time
-        self.burst_timer += delta_time
 
-       
-        if self.burst_timer >= self.current_burst.duration_sec: # Cambia el evento climatico si ha pasado su duracion
-            self.burst_index += 1
-            if self.burst_index < len(self.weather.bursts):
-                self.current_burst = self.weather.bursts[self.burst_index]
-                self.burst_timer = 0
+        # Actualizar clima dinámico
+        self.weather_state["burst_time_left"] -= delta_time
+        if self.weather_state["burst_time_left"] <= 0:
+            self.weather_state["burst_index"] += 1
 
-        
-        if self.release_index < len(self.jobs): # Libera nuevos pedidos segun el tiempo de juego
-            next_job = self.jobs[self.release_index]
-            if self.game_time >= next_job.release_time:
-                self.active_jobs.append(next_job)
-                self.release_index += 1
-
-       
-        still_active = [] # Verifica los pedidos activos y marca como fallidos los que han expirado
-        for job in self.active_jobs:
-            if self.game_time > job.release_time + 300:
-                self.failed.append(job)
+            if self.weather_state["burst_index"] < len(self.weather_state["bursts"]):
+                burst = self.weather_state["bursts"][self.weather_state["burst_index"]]
+                self.weather_state["current"] = burst.condition
+                self.weather_state["intensity"] = burst.intensity
+                self.weather_state["burst_time_left"] = burst.duration_sec
             else:
-                still_active.append(job)
-        self.active_jobs = still_active
+                # Si no hay más bursts, mantener el último clima activo
+                self.weather_state["burst_index"] = len(self.weather_state["bursts"]) - 1
+                burst = self.weather_state["bursts"][self.weather_state["burst_index"]]
+                self.weather_state["current"] = burst.condition
+                self.weather_state["intensity"] = burst.intensity
+                self.weather_state["burst_time_left"] = 9999  # clima final estable
 
-        
-        if self.exhausto and self.resistencia < 30: # Regenera la resistencia si el jugador esta exhausto
+            self.aplicar_efectos_climaticos()
+
+        # Liberar nuevos pedidos según el tiempo de juego
+        while self.release_index < len(self.jobs) and self.game_time >= self.jobs[self.release_index].release_time:
+            self.active_jobs.append(self.jobs[self.release_index])
+            self.release_index += 1
+
+        # Verificar pedidos activos y marcar como fallidos los que expiran
+        self.active_jobs = [
+            job if self.game_time <= job.release_time + 300 else self.failed.append(job)
+            for job in self.active_jobs
+            if self.game_time <= job.release_time + 300 or True  # mantener lógica clara
+        ]
+
+        # Regenerar resistencia si el jugador está exhausto
+        if self.exhausto and self.resistencia < 30:
             self.resistencia += 5 * delta_time
             if self.resistencia >= 30:
                 self.exhausto = False
 
-        
-        tiempo_terminado = self.game_time >= self.remaining_time # Verifica si se ha cumplido alguna condicion de fin de juego
-        pedidos_terminados = not self.active_jobs and not self.current_job
+        # Verificar condiciones de fin de partida
+        tiempo_terminado = self.game_time >= self.remaining_time
+        todos_liberados = self.release_index >= len(self.jobs)
+        sin_pedidos = not self.active_jobs and not self.current_job
+        pedidos_terminados = todos_liberados and sin_pedidos
         objetivo_dinero = self.total_money >= self.city_map.goal
 
-        if tiempo_terminado or pedidos_terminados or objetivo_dinero: 
+        if tiempo_terminado or pedidos_terminados or objetivo_dinero:
             self.finalizar_partida()
+
+
+
+
+
+    def aplicar_efectos_climaticos(self):
+       
+        clima = self.weather_state["current"]
+        intensidad = self.weather_state["intensity"]
+        
+        base = PLAYER_SPEED
+
+        if clima in ("rain", "rain_light"):
+            base *= 0.9 - 0.1 * intensidad
+        elif clima == "storm":
+            base *= 0.7 - 0.2 * intensidad
+        elif clima == "fog":
+            base *= 0.85
+        elif clima == "wind":
+            base *= 0.9
+        elif clima == "heat":
+            base *= 0.95
+        elif clima == "cold":
+            base *= 0.95
+        elif clima == "clouds":
+            base *= 1.0
+        elif clima == "clear":
+            base *= 1.0
+
+        peso = self.current_job.weight if self.current_job else 0
+        base *= max(0.6, 1.0 - peso / 50)
+
+        if self.resistencia < 30:
+            base *= 0.8
+
+        self.velocidad_actual = round(base, 2)
+        self.duracion_paso = 1 / self.velocidad_actual
+        self.desgaste = round(0.5 + intensidad * 0.5, 2)
 
 
              
 
-    def guardar_historial(self): # Guarda el historial de la partida en un archivo JSON
+    def guardar_historial(self):
+        """Guarda el historial de la partida en un archivo JSON."""
 
-        reputacion = max(0, 10 * len(self.completed) / (1 + len(self.completed) + len(self.failed)))
+        total = len(self.completed) + len(self.failed)
+        reputacion = round(10 * len(self.completed) / total, 2) if total > 0 else 0
+
         partida = {
             "fecha": datetime.datetime.now().isoformat(),
-            "clima": self.current_burst.condition if self.current_burst else "clear",
+            "clima": self.weather_state["current"],
             "duracion": self.game_time,
             "dinero": self.total_money,
             "reputacion": reputacion,
@@ -438,6 +555,7 @@ class CourierQuestGame(arcade.View): # Clase principal del juego
 
 
 
+
     def mostrar_historial(self): # Muestra el historial de partidas guardadas
         ruta = os.path.join(os.path.dirname(__file__), "..", "saves", "historial.json")
         try:
@@ -455,3 +573,39 @@ class CourierQuestGame(arcade.View): # Clase principal del juego
         self.mostrar_historial()
         print(" La partida ha terminado.")
         arcade.close_window()
+
+
+    def aplicar_efectos_climaticos(self):
+        clima = self.weather_state["current"]
+        tiempo_base = self.city_map.goal or 1500
+        self.remaining_time = int(tiempo_base * CLIMA_MULTIPLICADOR.get(clima, 1.0))
+
+        # Velocidad del jugador según clima
+        velocidad_por_clima = {
+            "clear": PLAYER_SPEED,
+            "rain": PLAYER_SPEED * 0.85,
+            "storm": PLAYER_SPEED * 0.70,
+            "fog": PLAYER_SPEED * 0.80,
+            "wind": PLAYER_SPEED * 0.88,
+            "cold": PLAYER_SPEED * 0.90,
+            "heat": PLAYER_SPEED,
+            "clouds": PLAYER_SPEED * 0.95
+        }
+        self.velocidad_actual = velocidad_por_clima.get(clima, PLAYER_SPEED)
+
+        # Desgaste de resistencia según clima
+        desgaste_por_clima = {
+            "clear": 0.1,
+            "rain": 0.2,
+            "storm": 0.3,
+            "heat": 0.25,
+            "cold": 0.05,
+            "fog": 0.1,
+            "wind": 0.15,
+            "clouds": 0.1
+        }
+        self.desgaste_resistencia = desgaste_por_clima.get(clima, 0.1)
+
+
+        
+       

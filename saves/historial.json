@@ -16,5 +16,104 @@
         "reputacion": 0,
         "pedidos_completados": 0,
         "pedidos_fallidos": 0
+    },
+    {
+        "fecha": "2025-10-05T17:37:44.029635",
+        "clima": "rain",
+        "duracion": 70.86363759986125,
+        "dinero": 550.0,
+        "reputacion": 7.5,
+        "pedidos_completados": 3,
+        "pedidos_fallidos": 0
+    },
+    {
+        "fecha": "2025-10-05T17:37:57.605055",
+        "clima": "rain",
+        "duracion": 2.9907648332882673,
+        "dinero": 0.0,
+        "reputacion": 0,
+        "pedidos_completados": 0,
+        "pedidos_fallidos": 0
+    },
+    {
+        "fecha": "2025-10-05T17:57:51.672454",
+        "clima": "clear",
+        "duracion": 51.81866203341633,
+        "dinero": 590.0,
+        "reputacion": 7.5,
+        "pedidos_completados": 3,
+        "pedidos_fallidos": 0
+    },
+    {
+        "fecha": "2025-10-05T17:57:58.890118",
+        "clima": "clear",
+        "duracion": 3.4046890332829207,
+        "dinero": 0.0,
+        "reputacion": 0,
+        "pedidos_completados": 0,
+        "pedidos_fallidos": 0
+    },
+    {
+        "fecha": "2025-10-05T18:51:47.230126",
+        "clima": "clear",
+        "duracion": 13.318851233460009,
+        "dinero": 180.0,
+        "reputacion": 10.0,
+        "pedidos_completados": 1,
+        "pedidos_fallidos": 0
+    },
+    {
+        "fecha": "2025-10-05T18:56:02.750195",
+        "clima": "clear",
+        "duracion": 38.9383261334151,
+        "dinero": 440.0,
+        "reputacion": 10.0,
+        "pedidos_completados": 2,
+        "pedidos_fallidos": 0
+    },
+    {
+        "fecha": "2025-10-05T18:56:10.217500",
+        "clima": "clear",
+        "duracion": 2.926562333246693,
+        "dinero": 0.0,
+        "reputacion": 0,
+        "pedidos_completados": 0,
+        "pedidos_fallidos": 0
+    },
+    {
+        "fecha": "2025-10-05T19:04:57.649035",
+        "clima": "clear",
+        "duracion": 2.083893599919975,
+        "dinero": 0.0,
+        "reputacion": 0,
+        "pedidos_completados": 0,
+        "pedidos_fallidos": 0
+    },
+    {
+        "fecha": "2025-10-05T19:08:54.196748",
+        "clima": "fog",
+        "duracion": 40.21431333338842,
+        "dinero": 180.0,
+        "reputacion": 10.0,
+        "pedidos_completados": 1,
+        "pedidos_fallidos": 0
+    },
+    {
+        "fecha": "2025-10-05T19:16:32.635143",
+        "clima": "clouds",
+        "duracion": 2.9299574333708733,
+        "dinero": 0.0,
+        "reputacion": 0,
+        "pedidos_completados": 0,
+        "pedidos_fallidos": 0
+    },
+    {
+        "fecha": "2025-10-05T19:16:52.477310",
+        "clima": "clouds",
+        "duracion": 22.77120273327455,
+        "dinero": 0.0,
+        "reputacion": 0,
+        "pedidos_completados": 0,
+        "pedidos_fallidos": 0
     }
 ]
